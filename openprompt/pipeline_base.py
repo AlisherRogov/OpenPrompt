@@ -1,7 +1,7 @@
 from pickle import FALSE
 from torch.utils.data.sampler import RandomSampler
 from transformers.configuration_utils import PretrainedConfig
-from transformers.generation_utils import GenerationMixin
+from transformers import GenerationMixin
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
@@ -19,8 +19,8 @@ import numpy as np
 from torch.utils.data import DataLoader
 from yacs.config import CfgNode
 from openprompt.utils.logging import logger
-from transformers import  AdamW, get_linear_schedule_with_warmup
-
+from transformers import get_linear_schedule_with_warmup
+from torch.optim import AdamW
 
 
 class PromptDataLoader(object):
@@ -299,7 +299,15 @@ class PromptForClassification(nn.Module):
         else:
             outputs_at_mask = self.extract_at_mask(outputs, batch)
         label_words_logits = self.verbalizer.process_outputs(outputs_at_mask, batch=batch)
-        return label_words_logits
+        # PromptExplainer
+        os1, os2, os3 = outputs.shape
+        output_all = outputs.reshape(os1 * os2, os3)
+        all_token_logits = self.verbalizer.process_outputs(output_all, batch=batch)  # eqn 2
+        all_token_logits = all_token_logits.reshape(os1, os2, label_words_logits.shape[1])
+        all_token_softmax = torch.nn.functional.softmax(all_token_logits, dim=-1) # eqn 3
+        # E = all_token_softmax[:,:,i] # eqn 4
+        # End of PromptExplainer
+        return label_words_logits, all_token_softmax
 
     def predict(self):
         pass
